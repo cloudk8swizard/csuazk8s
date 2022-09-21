@@ -1,0 +1,139 @@
+name: 'Deploy K3S in Azure using Github and Terraform'
+
+on:
+  push:
+    branches:
+    - master  
+
+  # Workflow Manual Trigger
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    name: 'Terraform ${{ matrix.provider }}'
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:       
+       provider: ['rancher/azure']
+
+    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.provider }}
+
+    # Checkout the repository to the GitHub Actions runner
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    
+    ##- name: Azure Login
+      ##uses: Azure/login@v1.4.5
+      ##with:
+        # Paste output of `az ad sp create-for-rbac` as value of secret variable: AZURE_CREDENTIALS
+        ##creds: ${{ secrets.AZURE_CREDENTIALS }}
+        # ClientId of the Azure Service principal created.
+        #client-id: # optional
+        # TenantId of the Azure Service principal created.
+        #tenant-id: # optional
+        # Azure subscriptionId
+        #subscription-id: # optional
+        # Set this value to true to enable Azure PowerShell Login in addition to Az CLI login
+        #enable-AzPSSession: # optional
+        # Name of the environment. Supported values are azurecloud, azurestack, azureusgovernment, azurechinacloud, azuregermancloud. Default being azurecloud
+        #environment: # optional, default is azurecloud
+        # Set this value to true to enable support for accessing tenants without subscriptions
+        #allow-no-subscriptions: # optional
+        # Provide audience field for access-token. Default value is api://AzureADTokenExchange
+        #audience: # optional, default is api://AzureADTokenExchange
+
+    # Replace sensitive data in terraform.tfvars file with Github Secrets
+    - name: Find and Replace - AZURE_CLIENT_ID
+      run: find terraform.tfvars -type f -exec sed -i ''s/__AZURE_CLIENT_ID__/${{ secrets.AZURE_CLIENT_ID }}/g'' {} \;
+    - name: Find and Replace - AZURE_CLIENT_SECRET
+      run: find terraform.tfvars -type f -exec sed -i ''s/__AZURE_CLIENT_SECRET__/${{ secrets.AZURE_CLIENT_SECRET }}/g'' {} \;
+    - name: Find and Replace - AZURE_SUBSCRIPTION_ID
+      run: find terraform.tfvars -type f -exec sed -i ''s/__AZURE_SUBSCRIPTION_ID__/${{ secrets.AZURE_SUBSCRIPTION_ID }}/g'' {} \;
+    - name: Find and Replace - AZURE_TENANT_ID
+      run: find terraform.tfvars -type f -exec sed -i ''s/__AZURE_TENANT_ID__/${{ secrets.AZURE_TENANT_ID }}/g'' {} \;
+    - name: Find and Replace - RANCHER_SERVER_ADMIN_PASSWORD
+      run: find terraform.tfvars -type f -exec sed -i ''s/__RANCHER_SERVER_ADMIN_PASSWORD__/${{ secrets.RANCHER_SERVER_ADMIN_PASSWORD }}/g'' {} \;
+    - name: Find and Replace - INSTANCE_TYPE
+      run: find terraform.tfvars -type f -exec sed -i ''s/__INSTANCE_TYPE__/${{ secrets.INSTANCE_TYPE }}/g'' {} \;
+    - name: Find and Replace - PREFIX
+      run: find terraform.tfvars -type f -exec sed -i ''s/__PREFIX__/${{ secrets.PREFIX }}/g'' {} \;
+    - name: cat terraform.tfvars
+      run: cat terraform.tfvars
+
+    # Install the latest version of Terraform CLI
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v1
+
+    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+    - name: Terraform Init
+      run: terraform init
+
+    # Checks that all Terraform configuration files adhere to a canonical format
+    - name: Terraform Format
+      run: terraform fmt -check
+
+    # Validates the Terraform configuration files
+    - name: Terraform Validate
+      run: terraform validate
+
+    - name: Setup go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17.6
+
+    - name: Setup terraform-docs
+      run: go install github.com/terraform-docs/terraform-docs@v0.16.0
+
+    - name: Validate if terraform-docs generated README.md is up to date
+      run: terraform-docs -c ../../.terraform-docs-readme.yml . --output-check
+
+    - name: Validate if terraform-docs generated terraform.tfvars.example is up to date
+      run: terraform-docs -c ../../.terraform-docs-tfvars.yml . --output-check
+    
+    - name: Terraform Plan
+      run: terraform plan
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
+
+    - name: Check SSH Certificates files
+      run: |
+        echo pwd
+        pwd
+        echo ls -la
+        ls -la
+      
+    - name: Create a TAR file with all SSH Certificates files
+      run: |
+        tar -cvzf id_rsa.tar.gz *id_rsa*
+        ls -la
+
+    # Uncomment this line in case you want to send the SSH certificates to a BLOB storage
+    # Upload SSH files to a BLOB storage account
+    ###- name: Azure Blob Upload
+      # You may pin to the exact commit or the version.
+      # uses: LanceMcCarthy/Action-AzureBlobUpload@247359db97828781010dead9e8d2544a2e0979eb
+      ###uses: LanceMcCarthy/Action-AzureBlobUpload@v2.0.0
+      ###with:
+        # Azure Storage ConnectionString for the container (Azure Portal - select Storage Account - Access Keys blade).
+        ###connection_string: __GITHUBSECRET.STORAGEACCOUNT.CONNECTIONSTRING__
+        # Blob Container name (e.g. my-container).
+        ###container_name: ck3sarc
+        # The local folder containing all the files and subfolders to upload to the blob container (use a trailing slash).
+        ###source_folder: /home/runner/work/azurek3s/azurek3s/rancher/azure/
+        # The target folder to use in the blob container with (do not use a leading or trailing slash).
+        #destination_folder: # optional
+        # This option will delete all the blobs in destination_folder before uploading the new files.
+        #clean_destination_folder: # optional
+        # If you want the Action to fail and report an error if the source_folder is empty.
+        ###fail_if_source_empty: true
+        # Set to false if you want all subfolders ignored.
+        #is_recursive: # optional, default is true
+        # If the blob exists it will be skipped, unless this is set to true.
+        #delete_if_exists: # optional
