@@ -102,7 +102,7 @@ jobs:
     - name: Terraform Apply
       run: terraform apply -auto-approve
 
-    - name: Check SSH Certificates files
+    - name: Check working directory for SSH Certificates files
       run: |
         echo pwd
         pwd
