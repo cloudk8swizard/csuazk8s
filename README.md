@@ -64,3 +64,5 @@ When you're finished exploring the Rancher server, use terraform to tear down al
 Make sure you tear down any resources you provisioned manually before running the destroy command.
 
 Run `terraform destroy -auto-approve` to remove all resources without prompting for confirmation.
+
+> THANKS FOR YOUR SUPPORT
